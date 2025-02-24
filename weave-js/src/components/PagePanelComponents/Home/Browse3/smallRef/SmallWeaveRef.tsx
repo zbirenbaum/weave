@@ -130,7 +130,12 @@ export const SmallWeaveRef = ({
     objRef.weaveKind === 'op' ? 'Op' : baseObjectClass ?? 'Object';
 
   const icon = ICON_MAP[rootTypeName] ?? IconNames.CubeContainer;
-  const url = peekingRouter.refUIUrl(rootTypeName, objRef, wfTable);
+
+  const url = peekingRouter.refUIUrl(
+    rootTypeName,
+    objRef,
+    wfTable ?? (objRef.weaveKind === 'op' ? 'OpVersion' : undefined)
+  );
   const label = iconOnly
     ? undefined
     : getObjectVersionLabel(objRef, versionIndex);
