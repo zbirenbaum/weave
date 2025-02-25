@@ -11,6 +11,9 @@ from weave.integrations.integration_utilities import (
 from weave.trace.weave_client import Call
 from weave.trace_server.trace_server_interface import CallsFilter
 
+import nltk
+nltk.download('punkt')
+nltk.download('punkt_tab')
 
 def assert_calls_correct_for_quickstart(flattened_calls: list[Call]) -> None:
     """Next, the major thing to assert is the "shape" of the calls:
@@ -55,7 +58,6 @@ def fake_api_key() -> Generator[None, None, None]:
             del os.environ["OPENAI_API_KEY"]
         else:
             os.environ["OPENAI_API_KEY"] = orig_key
-
 
 @pytest.mark.skip_clickhouse_client  # TODO:VCR recording does not seem to allow us to make requests to the clickhouse db in non-recording mode
 @pytest.mark.vcr(
