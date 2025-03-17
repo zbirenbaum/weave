@@ -63,6 +63,7 @@ def init(
     Returns:
         A Weave client.
     """
+    # Set the internal id of the project globally here
     parse_and_apply_settings(settings)
 
     global _global_postprocess_inputs

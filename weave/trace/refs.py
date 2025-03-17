@@ -21,6 +21,8 @@ class WeaveDigestError(ValueError):
 
 @dataclass(frozen=True)
 class Ref:
+    def __post_init__(self):
+        print(self)
     def uri(self) -> str:
         raise NotImplementedError
 
@@ -278,6 +280,7 @@ def parse_name_version(name_version: str) -> tuple[str, str]:
 
 
 def parse_uri(uri: str) -> AnyRef:
+    # This is a key method, how does the ref generation/handling work?
     if not uri.startswith("weave:///"):
         raise ValueError(f"Invalid URI: {uri}")
     path = uri[len("weave:///") :]
@@ -285,19 +288,27 @@ def parse_uri(uri: str) -> AnyRef:
     if len(parts) < 3:
         raise ValueError(f"Invalid URI: {uri}")
     entity, project, kind = parts[:3]
+    print('entity: ', entity)
+    print('project: ', project)
+    print('kind: ', kind)
     remaining = tuple(parts[3:])
+    print(f"remaining parts: {remaining}")
     if kind == "table":
+        print(f"table ref:\ndigest: {remaining[0]}\n")
         return TableRef(entity=entity, project=project, _digest=remaining[0])
     extra = tuple(urllib.parse.unquote(r) for r in remaining[1:])
     if kind == "call":
+        print(f"call ref:\n  id: {remaining[0]}, _extra: {extra}\n")
         return CallRef(entity=entity, project=project, id=remaining[0], _extra=extra)
     elif kind == "object":
         name, version = parse_name_version(remaining[0])
+        print(f"object ref:\n  digest: {version}, _extra: {extra}\n")
         return ObjectRef(
             entity=entity, project=project, name=name, _digest=version, _extra=extra
         )
     elif kind == "op":
         name, version = parse_name_version(remaining[0])
+        print(f"op ref:\n  digest: {version}, _extra: {extra}\n")
         return OpRef(
             entity=entity, project=project, name=name, _digest=version, _extra=extra
         )

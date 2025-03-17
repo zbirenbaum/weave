@@ -1843,6 +1843,17 @@ class WeaveClient:
                     val=json_val,
                 )
             )
+            # we have to wait on this to return a digest
+            # modify it so that you can just calculate the digest based purely on the req
+            # aligns with digest that computed by the server
+            # have digest checksum which errors if server produced different digest
+            # must enhance server to send off the checksum
+            # any create function must have this modification (e.g.) file_create, table_create
+            # expose get_digest on the server
+
+            # two options:
+            # 1. Give client the internal id server uses to compute
+            # 2. Remove the internal id from the server computation
             return self.server.obj_create(req)
 
         res_future: Future[ObjCreateRes] = self.future_executor.defer(send_obj_create)

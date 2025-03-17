@@ -126,7 +126,8 @@ class CallSchema(BaseModel):
 # Essentially a partial of StartedCallSchema. Mods:
 # - id is not required (will be generated)
 # - trace_id is not required (will be generated)
-class StartedCallSchemaForInsert(BaseModel):
+class StartedCallSchemaForInsert(BaseModel): # base model is pydantic obj
+    # pydantic obj automatically validated for incoming/outgoing fastapi calls
     project_id: str
     id: Optional[str] = None  # Will be generated if not provided
 
