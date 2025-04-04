@@ -1,3 +1,13 @@
+from enum import Enum
+import copy
+from typing import Any, Iterable
+from dataclasses import dataclass, field
+from opentelemetry.proto.common.v1.common_pb2 import KeyValue
+from abc import ABC, abstractmethod
+import openinference.semconv.trace as oi
+import opentelemetry.semconv_ai as ot
+from .trace_server_interface import LLMUsageSchema
+
 import json
 from collections.abc import Iterable
 from datetime import datetime
@@ -281,6 +291,23 @@ def get_attribute(data: dict[str, Any], key: str) -> Any:
     # Try to get from nested structure
     return _get_value_from_nested_dict(data, key)
 
+def pop_attribute(data: dict[str, Any], key: str) -> Any:
+    """
+    Pop the value of a nested attribute from either a nested or flattened dictionary.
+
+    Args:
+        data: dictionary to get value from
+        key: Dot-separated key to get
+
+    Returns:
+        The value at the specified key or None if not found
+    """
+    # Check if it's a flat dictionary
+    if key in data:
+        return data.pop(key)
+
+    # Try to get from nested structure
+    return _get_value_from_nested_dict(data, key)
 
 def unflatten_key_values(
     key_values: Iterable[KeyValue],
@@ -314,3 +341,140 @@ def unflatten_key_values(
     """
     iterator = ((kv.key, resolve_pb_any_value(kv.value)) for kv in key_values)
     return expand_attributes(iterator, json_attributes=[])
+
+
+class ConventionType(Enum):
+    OPENINFERENCE = "openinference"
+    OPENTELEMETRY = "opentelemetry"
+    CUSTOM = "custom"
+
+class AbstractAttributes(ABC):
+    _attributes: dict[str, Any] = field(default_factory=dict)
+    _original_attributes: dict[str, Any] = field(default_factory=dict)
+
+    @abstractmethod
+    def __getitem__(self, key: str) -> Any: ...
+
+    @abstractmethod
+    def __setitem__(self, key: str, value: Any) -> None: ...
+
+    @abstractmethod
+    def get(self, key: str, default: Any = None) -> Any: ...
+
+    @abstractmethod
+    def get_attribute_value(self, key: str) -> Any: ...
+
+    @abstractmethod
+    def extract_attribute_value(self, key: str) -> Any: ...
+
+    @abstractmethod
+    def extract_inputs(self) -> dict[str, Any]: ... 
+
+    @abstractmethod
+    def extract_outputs(self) -> Any: ... 
+
+    @abstractmethod
+    def extract_attributes(self) -> Any: ... 
+
+    @abstractmethod
+    def extract_usage(self) -> LLMUsageSchema: ... 
+
+class Attributes(AbstractAttributes):
+    _attributes: dict[str, Any] = field(default_factory=dict)
+    _original_attributes: dict[str, Any] = field(default_factory=dict)
+
+    def __init__(self, attributes: dict[str, Any] = {}) -> None:
+        self._attributes = attributes
+        self._original_attributes = copy.deepcopy(attributes)
+
+    def __getitem__(self, key: str) -> Any:
+        return self._attributes.__getitem__(key)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        return self._attributes.__setitem__(key, value)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._attributes.get(key, default)
+
+    def get_attribute_value(self, key: str) -> Any:
+        return get_attribute(self._attributes, key)
+
+    def extract_attribute_value(self, key: str) -> Any:
+        return pop_attribute(self._attributes, key)
+
+    def extract_usage(self) -> LLMUsageSchema:
+        raise NotImplementedError("extract_usage is not implemented")
+
+    def extract_inputs(self) -> Any:
+        raise NotImplementedError("extract_inputs is not implemented")
+
+    def extract_outputs(self) -> Any:
+        raise NotImplementedError("extract_outputs is not implemented")
+
+    def extract_attributes(self) -> Any:
+        raise NotImplementedError("extract_attributes is not implemented")
+
+class GenericAttributes(Attributes):
+    pass
+
+class OpenInferenceAttributes(Attributes):
+    def extract_attributes(self) -> dict[str, Any]:
+        return {
+            'system': self.extract_attribute_value(oi.SpanAttributes.LLM_SYSTEM),
+            'provider': self.extract_attribute_value(oi.SpanAttributes.LLM_PROVIDER),
+            'invocation_parameters': self.extract_attribute_value(oi.SpanAttributes.LLM_INVOCATION_PARAMETERS),
+            'kind': self.extract_attribute_value(oi.SpanAttributes.OPENINFERENCE_SPAN_KIND),
+            'model': self.extract_attribute_value(oi.SpanAttributes.LLM_MODEL_NAME),
+        }
+
+    def extract_inputs(self) -> Any:
+        return {
+            "value": self.extract_attribute_value(oi.SpanAttributes.INPUT_VALUE),
+            "input_messages": self.extract_attribute_value(oi.SpanAttributes.LLM_INPUT_MESSAGES)
+        }
+
+    def extract_outputs(self) -> Any:
+        return {
+            "value": self.extract_attribute_value(oi.SpanAttributes.OUTPUT_VALUE),
+            "input_messages": self.extract_attribute_value(oi.SpanAttributes.LLM_OUTPUT_MESSAGES)
+        }
+
+    def extract_usage(self) -> LLMUsageSchema:
+        return LLMUsageSchema(
+            prompt_tokens = self.extract_attribute_value(oi.SpanAttributes.LLM_TOKEN_COUNT_PROMPT),
+            completion_tokens = self.extract_attribute_value(oi.SpanAttributes.LLM_TOKEN_COUNT_COMPLETION),
+            total_tokens = self.extract_attribute_value(oi.SpanAttributes.LLM_TOKEN_COUNT_TOTAL)
+        )
+
+class OpenTelemetryAttributes(Attributes):
+    def extract_attributes(self) -> dict[str, Any]:
+        return {
+            'system': self.extract_attribute_value(ot.SpanAttributes.LLM_SYSTEM),
+            'invocation_parameters': self.extract_attribute_value(oi.SpanAttributes.LLM_PROVIDER),
+            'kind': self.extract_attribute_value(ot.SpanAttributes.TRACELOOP_SPAN_KIND),
+            'model': self.extract_attribute_value(ot.SpanAttributes.LLM_RESPONSE_MODEL),
+        }
+
+    def extract_outputs(self) -> Any:
+        self.extract_attribute_value(ot.SpanAttributes.LLM_COMPLETIONS)
+
+    def extract_inputs(self) -> Any:
+        self.extract_attribute_value(ot.SpanAttributes.LLM_PROMPTS) 
+
+    def extract_usage(self) -> LLMUsageSchema:
+        # This is weird because it's defined in their spec, but did not show up even for popular instrumentations like OpenAI
+        return LLMUsageSchema(
+            prompt_tokens = self.extract_attribute_value(ot.SpanAttributes.LLM_USAGE_PROMPT_TOKENS),
+            completion_tokens = self.extract_attribute_value(ot.SpanAttributes.LLM_USAGE_COMPLETION_TOKENS),
+            total_tokens = self.extract_attribute_value(ot.SpanAttributes.LLM_USAGE_TOTAL_TOKENS)
+        )
+
+class AttributesFactory:
+    def from_proto(self, key_values: Iterable[KeyValue]) -> "Attributes":
+        expanded = unflatten_key_values(key_values)
+        if get_attribute(expanded, ConventionType.OPENINFERENCE.value):
+            return OpenInferenceAttributes(expanded)
+        elif get_attribute(expanded, ConventionType.OPENTELEMETRY.value):
+            return OpenTelemetryAttributes(expanded)
+        return GenericAttributes(expanded)
+
